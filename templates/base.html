@@ -1,0 +1,36 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitZone - Transform Your Body</title>
+    {% comment %} <link rel="stylesheet" href="{% static 'css/style.css' %}"> {% endcomment %}
+    {% include 'partials/_css.html' %}
+</head>
+<body>
+    <!--Wrapper Start-->
+    <div class="wrapper">
+        <!--Header Start-->
+        {% include "partials/_header.html" %}
+
+        <!--Sildebar Start-->
+        {% comment %} {% include "partials/_sidebar.html" %} {% endcomment %}
+
+        <!--Slider-->
+        {% comment %} {% include "partials/_slider.html" with sliders=sliders %} {% endcomment %}
+
+        <!--Main Content-->
+        {% block maincontent %}
+
+        {% endblock %}
+
+        <!--Footer Start-->
+        {% include "partials/_footer.html" %}
+
+        <!--Js-->
+        {% comment %} {% include "partials/_js.html" %} {% endcomment %}
+    </div>
+    
+</body>
+</html>
