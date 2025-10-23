@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load static %}
+{% block maincontent %}
+<!-- Hero Section -->
+<section class="hero-section" style="background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('{% static 'images/gym-hero.jpg' %}'); background-size: cover; height: 500px;">
+    <div class="container h-100">
+        <div class="row h-100 align-items-center">
+            <div class="col-md-8 text-white">
+                <h1 class="display-3 font-weight-bold">TRANSFORM YOUR BODY</h1>
+                <p class="lead">Join FitZone and achieve your fitness goals with expert trainers</p>
+                <a href="" class="btn btn-primary btn-lg">Start Your Journey</a>
+                <a href="" class="btn btn-outline-light btn-lg ml-2">View Programs</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
