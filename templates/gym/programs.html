@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block maincontent %}
+<div class="inner-banner bg-dark text-white py-5">
+    <div class="container">
+        <h1>Fitness Programs</h1>
+        <p class="lead">Find the perfect program for your goals</p>
+    </div>
+</div>
+
+<div class="main-content py-5">
+    <div class="container">
+        <div class="row">
+            {% for program in object_list %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 shadow">
+                    <img src="{{ program.thumbnail.url }}" class="card-img-top" alt="{{ program.title }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ program.title }}</h5>
+                        <p class="card-text">{{ program.description|truncatewords:25 }}</p>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span><i class="fa fa-clock-o"></i> {{ program.duration }}</span>
+                            {% if program.price %}
+                            <span class="h5 text-primary mb-0">${{ program.price }}/mo</span>
+                            {% endif %}
+                        </div>
+                        <a href="{% url 'gym:program_details' program.id %}" class="btn btn-primary btn-block">View Details</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

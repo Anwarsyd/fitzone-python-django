@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block maincontent%}
+<div class="inner-banner bg-dark text-white py-5">
+    <div class="container">
+        <h1>{{ program_details.title }}</h1>
+    </div>
+</div>
+
+<div class="main-content py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8">
+                <img src="{{ object.cover.url }}" class="img-fluid rounded mb-4" alt="{{ object.title }}">
+                
+                <h3>About This Program</h3>
+                <p>{{ object.description }}</p>
+                
+                <div class="card bg-light mb-4">
+                    <div class="card-body">
+                        <h5>Program Details</h5>
+                        <ul class="list-unstyled">
+                            <li><strong>Duration:</strong> {{ object.duration }}</li>
+                            {% if object.price %}
+                            <li><strong>Price:</strong> ${{ object.price }}/month</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+                
+                <h4>Program Features</h4>
+                <ul>
+                    {% for feature in object.features.all %}
+                    <li><i class="fa fa-check text-success"></i> {{ feature.title }}</li>
+                    {% endfor %}
+                </ul>
+                
+                {% if object.image1 or object.image2 %}
+                <div class="row mt-4">
+                    {% if object.image1 %}
+                    <div class="col-md-6">
+                        <img src="{{ object.image1.url }}" class="img-fluid rounded" alt="Program image">
+                    </div>
+                    {% endif %}
+                    {% if object.image2 %}
+                    <div class="col-md-6">
+                        <img src="{{ object.image2.url }}" class="img-fluid rounded" alt="Program image">
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <h5>Ready to Start?</h5>
+                        <p>Book this program now and start your transformation!</p>
+                        <a href="{% url "Booking:booking" %}" class="btn btn-primary btn-block btn-lg">Book Now</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
