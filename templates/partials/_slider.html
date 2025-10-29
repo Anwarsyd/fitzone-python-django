@@ -1,0 +1,36 @@
+<!-- partials/_slider.html -->
+<style>
+#fitzoneCarousel img {
+  height: 500px;
+  width: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.carousel-caption {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+  padding: 20px;
+}
+</style>
+
+<div id="fitzoneCarousel" class="carousel slide" data-bs-ride="carousel">
+  <div class="carousel-inner">
+    {% for slide in sliders %}
+      <div class="carousel-item {% if forloop.first %}active{% endif %}">
+        <img src="{{ slide.image.url }}" class="d-block w-100" alt="{{ slide.caption }}">
+        <div class="carousel-caption d-none d-md-block">
+          <h2 class="text-uppercase text-white fw-bold">{{ slide.caption }}</h2>
+          <p class="text-light">{{ slide.slogan }}</p>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <button class="carousel-control-prev" type="button" data-bs-target="#fitzoneCarousel" data-bs-slide="prev">
+    <span class="carousel-control-prev-icon"></span>
+  </button>
+  <button class="carousel-control-next" type="button" data-bs-target="#fitzoneCarousel" data-bs-slide="next">
+    <span class="carousel-control-next-icon"></span>
+  </button>
+</div>
