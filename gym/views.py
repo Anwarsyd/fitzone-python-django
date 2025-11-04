@@ -26,5 +26,6 @@ class ProgramDetailsView(DetailView):
     queryset = Program.objects.all()
     context_object_name = 'program_details'
     
-
-    
+class FaqsView(ListView):
+    template_name="gym/faqs.html"
+    queryset=Faq.objects.all()

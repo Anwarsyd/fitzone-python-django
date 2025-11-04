@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block maincontent %}
+{% include "partials/_slider.html" with sliders=sliders %}
 <!-- Hero Section -->
 <section class="hero-section" style="background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('/media/sliders/fitzone-hero.jpeg'); background-size: cover; height: 500px;">
     <div class="container h-100">
