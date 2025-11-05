@@ -29,3 +29,12 @@ class ProgramDetailsView(DetailView):
 class FaqsView(ListView):
     template_name="gym/faqs.html"
     queryset=Faq.objects.all()
+    
+class TrainersView(ListView):
+    template_name = "gym/trainers.html"
+    queryset = Trainer.objects.all()
+    
+class TrainerDetailsView(DetailView):
+    template_name = "gym/trainer_details.html"
+    queryset = Trainer.objects.all()
+    
