@@ -1,6 +1,7 @@
 from django.shortcuts import render,redirect
 from .models import Slider, Program, Trainer, Faq, Gallery, Testimonial
-from django.views.generic import ListView,DetailView
+from django.views.generic import ListView,DetailView,TemplateView
+from django.core.mail import send_mail
 # Create your views here.
 
 class HomeView(ListView):
@@ -38,3 +39,32 @@ class TrainerDetailsView(DetailView):
     template_name = "gym/trainer_details.html"
     queryset = Trainer.objects.all()
     
+class GalleryListView(ListView):
+    template_name = 'gym/gallery.html'
+    queryset = Gallery.objects.all()
+    paginate_by = 9
+    
+class ContactView(TemplateView):
+    template_name = "gym/contact.html"
+
+    def post(self, request, *args, **kwargs):
+        name = request.POST.get('name')
+        email = request.POST.get('email')
+        phone = request.POST.get('phone')
+        subject = request.POST.get('subject', 'FitZone Inquiry')
+        message = request.POST.get('message')
+
+        if name and message and email and phone:
+            try:
+                send_mail(
+                    f"{subject} - {phone}",
+                    f"From: {name}\nEmail: {email}\n\n{message}",
+                    email,
+                    ['your-email@gmail.com'],
+                    fail_silently=False,
+                )
+                messages.success(request, "Message sent successfully!")
+            except:
+                messages.error(request, "Failed to send message.")
+
+        return redirect('contact')

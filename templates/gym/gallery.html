@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block maincontent %}
+<div class="inner-banner bg-dark text-white py-5">
+    <div class="container">
+        <h1>Gallery</h1>
+        <p class="lead">Take a tour of our facilities</p>
+    </div>
+</div>
+
+<div class="main-content py-5">
+    <div class="container">
+        <div class="row">
+            {% for img in object_list %}
+            <div class="col-md-4 mb-4">
+                <div class="card shadow">
+                    <img src="{{ img.image.url }}" class="card-img-top" alt="{{ img.title }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ img.title }}</h5>
+                        <span class="badge badge-primary">{{ img.get_category_display }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% comment %} {% if is_paginated %} {% endcomment %}
+        {% comment %} {% include 'partials/_pagination.html' %} {% endcomment %}
+        {% comment %} {% endif %} {% endcomment %}
+    </div>
+</div>
+{% endblock %}

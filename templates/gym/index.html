@@ -16,4 +16,122 @@
     </div>
 </section>
 
+<!-- Welcome Section -->
+<section class="welcome-section py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h2>Welcome to FitZone</h2>
+                <p class="lead">Where your fitness journey begins</p>
+                <p>At FitZone, we provide state-of-the-art equipment, experienced trainers, and proven programs to help you achieve your fitness goals. Whether you're looking to lose weight, build muscle, or improve your overall health, we have the perfect program for you.</p>
+                <ul class="list-unstyled">
+                    <li><i class="fa fa-check text-primary"></i> Certified Personal Trainers</li>
+                    <li><i class="fa fa-check text-primary"></i> Modern Equipment</li>
+                    <li><i class="fa fa-check text-primary"></i> Flexible Schedule</li>
+                    <li><i class="fa fa-check text-primary"></i> Nutrition Guidance</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <img src="/media/sliders/fitzone-hero.jpeg" class="img-fluid rounded" alt="Welcome">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Programs Section -->
+<section class="programs-section py-5 bg-light">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2>Our Fitness Programs</h2>
+            <p class="lead">Choose the perfect program for your goals</p>
+        </div>
+        <div class="row">
+            {% for program in programs %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 shadow">
+                    <img src="{{ program.thumbnail.url }}" class="card-img-top" alt="{{ program.title }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ program.title }}</h5>
+                        <p class="card-text">{{ program.description|truncatewords:20 }}</p>
+                        <p><strong>Duration:</strong> {{ program.duration }}</p>
+                        {% if program.price %}
+                        <p class="h4 text-primary">${{ program.price }}/month</p>
+                        {% endif %}
+                        <a href="{% url 'gym:program_details' program.id %}" class="btn btn-primary btn-block">Learn More</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Trainers Section -->
+<section class="trainers-section py-5">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2>Meet Our Trainers</h2>
+            <p class="lead">Certified experts ready to guide you</p>
+        </div>
+        <div class="row">
+            {% for trainer in trainers %}
+            <div class="col-md-3 mb-4">
+                <div class="card text-center">
+                    <img src="{{ trainer.picture.url }}" class="card-img-top" alt="{{ trainer.name }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ trainer.name }}</h5>
+                        <p class="text-muted">{{ trainer.specialization }}</p>
+                        <a href="{% url 'gym:trainer_details' trainer.id %}" class="btn btn-sm btn-outline-primary">View Profile</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Testimonials Section -->
+<section class="testimonials-section py-5 bg-dark text-white mb-3">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2>Success Stories</h2>
+            <p class="lead">See what our members have achieved</p>
+        </div>
+        <div class="row">
+            {% for testimonial in testimonials %}
+            <div class="col-md-4 mb-4">
+                <div class="card bg-secondary text-white">
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <img src="{{ testimonial.image.url }}" class="rounded-circle" width="80" height="80" alt="{{ testimonial.name }}">
+                        </div>
+                        <p class="card-text">"{{ testimonial.testimonial|truncatewords:30 }}"</p>
+                        <div class="text-warning">
+                            {% for i in "12345" %}
+                                {% if forloop.counter <= testimonial.rating %}
+                                    <i class="fa fa-star"></i>
+                                {% else %}
+                                    <i class="fa fa-star-o"></i>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        <p class="mb-0"><strong>{{ testimonial.name }}</strong></p>
+                        <small>{{ testimonial.program }}</small>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Booking Section -->
+<section class="cta-section py-5 bg-primary text-white text-center">
+    <div class="container">
+        <h2>Ready to Start Your Fitness Journey?</h2>
+        <p class="lead">Join FitZone today and get your first week free!</p>
+        <a href="{% url 'Booking:booking' %}" class="btn btn-light btn-lg">Book Your First Class</a>
+    </div>
+</section>
+
 {% endblock %}

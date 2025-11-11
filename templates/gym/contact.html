@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block maincontent %}
+<div class="inner-banner bg-dark text-white py-5">
+    <div class="container">
+        <h1>Contact Us</h1>
+        <p class="lead">Get in touch with FitZone</p>
+    </div>
+</div>
+
+<div class="main-content py-5">
+    <div class="container">
+        {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+            {{ message }}
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <div class="row mb-2">
+            <div class="col-md-6">
+                <h3>Send us a Message</h3>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-group mb-2">
+                        <input type="text" name="name" class="form-control" placeholder="Your Name" required>
+                    </div>
+                    <div class="form-group mb-2">
+                        <input type="email" name="email" class="form-control" placeholder="Your Email" required>
+                    </div>
+                    <div class="form-group mb-2">
+                        <input type="text" name="phone" class="form-control" placeholder="Phone" required>
+                    </div>
+                    <div class="form-group mb-2">
+                        <input type="text" name="subject" class="form-control" placeholder="Subject">
+                    </div>
+                    <div class="form-group mb-2">
+                        <textarea name="message" class="form-control" rows="5" placeholder="Message" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg">Send Message</button>
+                </form>
+            </div>
+            
+            <div class="col-md-6">
+                <h3>Visit Us</h3>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5><i class="fa fa-map-marker text-primary"></i> Address</h5>
+                        <p>123 Fitness Street<br>City, State 12345</p>
+                        
+                        <h5><i class="fa fa-phone text-primary"></i> Phone</h5>
+                        <p>+1 234 567 890</p>
+                        
+                        <h5><i class="fa fa-envelope text-primary"></i> Email</h5>
+                        <p>info@fitzone.com</p>
+                        
+                        <h5><i class="fa fa-clock-o text-primary"></i> Hours</h5>
+                        <p>Monday - Friday: 6AM - 10PM<br>
+                           Saturday - Sunday: 7AM - 9PM</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
