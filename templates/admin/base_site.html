@@ -1,0 +1,33 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}FitZone Admin{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <strong style="color: #ff6b35;">FIT</strong><span style="color: white;">ZONE</span> Admin
+    </a>
+</h1>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    #header {
+        background: #2c2c2c;
+    }
+    #branding h1 a:link, #branding h1 a:visited {
+        color: white;
+        text-decoration: none;
+    }
+    div.breadcrumbs {
+        background: #ff6b35;
+    }
+    .module h2, .module caption {
+        background: #2c2c2c;
+    }
+    a:link, a:visited {
+        color: #ff6b35;
+    }
+</style>
+{% endblock %}
