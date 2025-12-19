@@ -3,6 +3,29 @@ from django.db import models
 # Create your models here.
 from gym.models import Trainer,Program
 
+
+# User mobile-based
+class GymUser(models.Model):
+    phone = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=120, blank=True)
+    email = models.EmailField(blank=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.phone
+    
+    
+# OTP
+class OTP(models.Model):
+    phone = models.CharField(max_length=20)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.phone} - {self.otp}"
+    
+    
 class Booking(models.Model):
     TIME_CHOICES = (
         ('morning', 'Morning (6AM - 12PM)'),
@@ -10,9 +33,7 @@ class Booking(models.Model):
         ('evening', 'Evening (6PM - 10PM)'),
     )
     
-    name = models.CharField(max_length=120)
-    email = models.EmailField()
-    phone = models.CharField(max_length=20)
+    user = models.ForeignKey(GymUser, on_delete=models.CASCADE)
     trainer = models.ForeignKey(Trainer,on_delete=models.CASCADE,null=True,blank=True)
     program = models.ForeignKey(Program,on_delete=models.CASCADE)
     preferred_date = models.DateField()
@@ -21,7 +42,7 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.name} - {self.program.title} - {self.preferred_date}"
+        return f"{self.user.phone} - {self.program.title} - {self.preferred_date}"
     
     class Meta:
         ordering = ['-created_at']

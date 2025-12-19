@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block maincontent %}
+
+<div class="container mt-5 col-md-4">
+    <h4 class="text-center mb-3">Login with Mobile</h4>
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="text" name="phone" class="form-control mb-3"
+               placeholder="Enter mobile number" required>
+        <button class="btn btn-primary w-100">Send OTP</button>
+    </form>
+</div>
+
+{% endblock %}
