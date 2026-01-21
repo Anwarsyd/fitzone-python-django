@@ -4,7 +4,8 @@ from . import views
 app_name = "Booking"
 
 urlpatterns = [
-    path("",views.BookingView.as_view(),name="booking"),
-    path("login/", views.send_otp, name="send_otp"),
-    path("verify-otp/", views.verify_otp, name="verify_otp")
+    path("", views.BookingView.as_view(),name="booking"),
+    path("login/", views.SendOTPView.as_view(), name="send_otp"),
+    path("verify-otp/", views.VerifyOTPView.as_view(), name="verify_otp"),
+    path("logout/", views.logout_view, name="logout"),
 ]

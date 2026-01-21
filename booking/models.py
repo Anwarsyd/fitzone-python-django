@@ -1,7 +1,8 @@
 from django.db import models
-
-# Create your models here.
 from gym.models import Trainer,Program
+
+from django.utils import timezone
+from datetime import timedelta
 
 
 # User mobile-based
@@ -22,6 +23,10 @@ class OTP(models.Model):
     otp = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=5)
+    
+    
     def __str__(self):
         return f"{self.phone} - {self.otp}"
     
