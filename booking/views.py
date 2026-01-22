@@ -1,8 +1,8 @@
-from django.shortcuts import render,redirect
+from django.shortcuts import render, redirect
 from django.views.generic import View
 from django.contrib import messages
-from .models import GymUser, OTP, Booking
-from gym.models import Trainer,Program
+from .models import GymUser, OTP, Booking, Profile
+from gym.models import Trainer, Program
 import random
 
 from django.conf import settings
@@ -62,12 +62,6 @@ class VerifyOTPView(View):
         messages.success(request, "Login successful")
         return redirect("Booking:booking")
 
-from django.shortcuts import render, redirect
-from django.views import View
-from django.contrib import messages
-from django.core.mail import send_mail
-from .models import GymUser, Booking
-from gym.models import Trainer, Program
 
 class BookingView(View):
     template_name = "booking/index.html"
@@ -79,9 +73,16 @@ class BookingView(View):
             return redirect("Booking:send_otp")
 
         user = GymUser.objects.get(id=user_id)
+        
+        # Get profile if exists
+        try:
+            profile = Profile.objects.get(user=user)
+        except Profile.DoesNotExist:
+            profile = None
 
         context = {
-            "user": user,  # For read-only phone
+            "user": user,
+            "profile": profile,
             "trainers": Trainer.objects.all(),
             "programs": Program.objects.all(),
         }
@@ -96,23 +97,37 @@ class BookingView(View):
         user = GymUser.objects.get(id=user_id)
 
         # Get form data
+        name = request.POST.get("name")
+        email = request.POST.get("email")
         program_id = request.POST.get("program")
         trainer_id = request.POST.get("trainer")
         date = request.POST.get("date")
         time = request.POST.get("time")
         message = request.POST.get("message", "")
 
-        if not all([program_id, date, time]):
+        if not all([name, email, program_id, date, time]):
             messages.error(request, "Please fill all required fields.")
             return redirect("Booking:booking")
+
+        # Update or create profile with name and email
+        profile, created = Profile.objects.get_or_create(user=user)
+        profile.name = name
+        profile.email = email
+        profile.save()
+
+        # Update user email
+        user.email = email
+        user.save()
 
         # Fetch program and trainer objects
         program = Program.objects.get(id=program_id)
         trainer = Trainer.objects.get(id=trainer_id) if trainer_id else None
 
-        # Create booking
+        # Create booking with snapshot data
         booking = Booking.objects.create(
             user=user,
+            user_name=name,
+            user_phone=user.phone,
             program=program,
             trainer=trainer,
             preferred_date=date,
@@ -121,12 +136,12 @@ class BookingView(View):
         )
 
         # Send confirmation email
-        if user.email:
+        if email:
             try:
                 trainer_name = trainer.name if trainer else "our team"
                 send_mail(
                     subject='FitZone - Booking Confirmation',
-                    message=f"""Dear {user.name or user.phone},
+                    message=f"""Dear {name},
 
                     Your class booking for {program.title} with {trainer_name} on {date} ({time}) has been confirmed.
 
@@ -134,21 +149,81 @@ class BookingView(View):
 
                     FitZone Team
                     """,
-                    
                     from_email='noreply@fitzone.com',
-                    recipient_list=[user.email],
+                    recipient_list=[email],
                     fail_silently=True,
                 )
             except Exception as e:
                 print(f"Email not sent: {e}")
 
         messages.success(request, "Your class has been booked successfully! Check your email for confirmation.")
-        return redirect("Booking:booking")
+        return redirect("gym:index")
+
+
+# Profile View
+class ProfileView(View):
+    template_name = "booking/profile.html"
+
+    def get(self, request):
+        user_id = request.session.get("user_id")
+        if not user_id:
+            messages.info(request, "Please login to view your profile.")
+            return redirect("Booking:send_otp")
+
+        user = GymUser.objects.get(id=user_id)
+        
+        # Get or create profile
+        profile, created = Profile.objects.get_or_create(
+            user=user,
+            defaults={
+                'name': '',
+                'email': user.email or ''
+            }
+        )
+
+        # Get user's bookings
+        bookings = Booking.objects.filter(user=user)
+
+        context = {
+            "user": user,
+            "profile": profile,
+            "bookings": bookings,
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        user_id = request.session.get("user_id")
+        if not user_id:
+            messages.error(request, "Please login to update your profile.")
+            return redirect("Booking:send_otp")
+
+        user = GymUser.objects.get(id=user_id)
+        profile, created = Profile.objects.get_or_create(user=user)
+
+        # Update profile fields
+        profile.name = request.POST.get("name", "")
+        profile.email = request.POST.get("email", "")
+        profile.height = request.POST.get("height") or None
+        profile.weight = request.POST.get("weight") or None
+        profile.emergency_contact = request.POST.get("emergency_contact", "")
+        profile.medical_notes = request.POST.get("medical_notes", "")
+
+        # Handle profile photo upload
+        if request.FILES.get("profile_photo"):
+            profile.profile_photo = request.FILES["profile_photo"]
+
+        profile.save()
+
+        # Also update email in GymUser if provided
+        if profile.email:
+            user.email = profile.email
+            user.save()
+
+        messages.success(request, "Profile updated successfully!")
+        return redirect("Booking:profile")
 
 
 def logout_view(request):
     request.session.flush()
     messages.success(request, "Logged out successfully")
     return redirect("Booking:send_otp")
-
-        
