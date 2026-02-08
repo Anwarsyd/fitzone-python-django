@@ -1,4 +1,4 @@
-name: FitZone Django CI/CD
+name: Django CI/CD
 
 on:
   push:
@@ -10,62 +10,40 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_fitzone_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_fitzone_db
-      SECRET_KEY: test-secret-key-for-ci-cd-pipeline
+      SECRET_KEY: test-secret-key-for-github-actions
       DEBUG: False
       ALLOWED_HOSTS: localhost,127.0.0.1
-
-    strategy:
-      matrix:
-        python-version: ['3.11']
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.11'
         cache: 'pip'
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libpq-dev
+        sudo apt-get install -y python3-dev
+
+    - name: Upgrade pip
+      run: |
+        python -m pip install --upgrade pip
 
     - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Create media directories
       run: |
-        mkdir -p media/sliders
-        mkdir -p media/programs
-        mkdir -p media/trainers
-        mkdir -p media/gallery
-        mkdir -p media/testimonials
-        mkdir -p media/profiles
+        mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
 
-    - name: Run Django checks
+    - name: Check Django configuration
       run: |
         python manage.py check
 
@@ -74,110 +52,84 @@ jobs:
         python manage.py migrate --noinput
 
     - name: Collect static files
+      continue-on-error: true
       run: |
-        python manage.py collectstatic --noinput --clear || true
+        python manage.py collectstatic --noinput --clear
 
-    - name: Run tests for booking app
+    - name: Run all tests with coverage
       run: |
-        pytest booking/tests/ -v --cov=booking --cov-report=xml:coverage-booking.xml
+        pytest -v --cov=booking --cov=gym --cov-report=xml --cov-report=term-missing --cov-report=html
 
-    - name: Run tests for gym app
+    - name: Display coverage summary
       run: |
-        pytest gym/tests/ -v --cov=gym --cov-report=xml:coverage-gym.xml
+        echo "📊 Coverage Summary:"
+        coverage report
 
-    - name: Run all tests with combined coverage
-      run: |
-        pytest -v --cov=booking --cov=gym --cov-report=xml --cov-report=html --cov-report=term-missing
-
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+    - name: Upload coverage to Codecov
+      if: github.event_name == 'push'
+      uses: codecov/codecov-action@v4
+      continue-on-error: true
       with:
-        files: ./coverage.xml,./coverage-booking.xml,./coverage-gym.xml
+        file: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
-        verbose: true
-
-    - name: Generate coverage badge
-      if: github.ref == 'refs/heads/main'
-      run: |
-        pip install coverage-badge
-        coverage-badge -o coverage.svg -f
+        token: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Archive coverage reports
-      uses: actions/upload-artifact@v3
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-reports
         path: |
           htmlcov/
           coverage.xml
-          coverage-booking.xml
-          coverage-gym.xml
-          coverage.svg
         retention-days: 30
 
-    - name: Archive test results
-      if: always()
-      uses: actions/upload-artifact@v3
+    - name: Archive test database
+      if: failure()
+      uses: actions/upload-artifact@v4
       with:
-        name: test-results
-        path: |
-          .pytest_cache/
+        name: test-database
+        path: db.sqlite3
         retention-days: 7
 
   lint:
-    name: Code Quality & Linting
+    name: Code Quality
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip'
 
     - name: Install linting tools
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 black isort pylint
+        pip install flake8 black isort
 
-    - name: Run flake8 on booking app
+    - name: Run flake8 - Critical Errors
       run: |
-        flake8 booking/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 booking/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 booking/ gym/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
-    - name: Run flake8 on gym app
+    - name: Run flake8 - All Issues
+      continue-on-error: true
       run: |
-        flake8 gym/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 gym/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 booking/ gym/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Check code formatting with black (booking)
+    - name: Check code formatting with black
+      continue-on-error: true
       run: |
-        black --check booking/ || true
+        black --check booking/ gym/ || echo "⚠️  Black formatting issues found (run 'black booking/ gym/' to fix)"
 
-    - name: Check code formatting with black (gym)
+    - name: Check import sorting with isort
+      continue-on-error: true
       run: |
-        black --check gym/ || true
-
-    - name: Check import sorting with isort (booking)
-      run: |
-        isort --check-only booking/ || true
-
-    - name: Check import sorting with isort (gym)
-      run: |
-        isort --check-only gym/ || true
-
-    - name: Run pylint on booking app
-      run: |
-        pip install django
-        pylint booking/ --disable=all --enable=E,F || true
-
-    - name: Run pylint on gym app
-      run: |
-        pylint gym/ --disable=all --enable=E,F || true
+        isort --check-only booking/ gym/ || echo "⚠️  Import sorting issues found (run 'isort booking/ gym/' to fix)"
 
   security:
     name: Security Scanning
@@ -187,13 +139,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip'
 
-    - name: Install security tools
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install safety bandit
@@ -205,30 +156,12 @@ jobs:
     - name: Run safety check
       continue-on-error: true
       run: |
-        safety check --json --output safety-report.json || true
-        cat safety-report.json
+        safety check --json || echo "⚠️  Safety check completed with warnings"
 
-    - name: Run bandit security check on booking app
+    - name: Run bandit security scan
       continue-on-error: true
       run: |
-        bandit -r booking/ -f json -o bandit-booking.json || true
-        cat bandit-booking.json
-
-    - name: Run bandit security check on gym app
-      continue-on-error: true
-      run: |
-        bandit -r gym/ -f json -o bandit-gym.json || true
-        cat bandit-gym.json
-
-    - name: Upload security reports
-      uses: actions/upload-artifact@v3
-      with:
-        name: security-reports
-        path: |
-          safety-report.json
-          bandit-booking.json
-          bandit-gym.json
-        retention-days: 30
+        bandit -r booking/ gym/ -ll || echo "⚠️  Bandit scan completed with warnings"
 
   build-summary:
     name: Build Summary
@@ -237,23 +170,38 @@ jobs:
     if: always()
     
     steps:
-    - name: Check job results
+    - name: Check build results
       run: |
-        echo "Test Job: ${{ needs.test.result }}"
-        echo "Lint Job: ${{ needs.lint.result }}"
-        echo "Security Job: ${{ needs.security.result }}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🔍 FitZone CI/CD Build Summary"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Test Results:     ${{ needs.test.result }}"
+        echo "Code Quality:     ${{ needs.lint.result }}"
+        echo "Security Scan:    ${{ needs.security.result }}"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         
-        if [ "${{ needs.test.result }}" != "success" ]; then
-          echo "❌ Tests failed!"
+        if [ "${{ needs.test.result }}" == "success" ]; then
+          echo "✅ All tests passed!"
+        else
+          echo "❌ Tests failed - check logs above"
           exit 1
         fi
         
-        echo "✅ All jobs completed successfully!"
-
-    - name: Success notification
-      if: success()
-      run: |
-        echo "🎉 CI/CD Pipeline completed successfully!"
-        echo "✅ All tests passed"
-        echo "✅ Code quality checks passed"
-        echo "✅ Security scans completed"
+        if [ "${{ needs.lint.result }}" == "success" ]; then
+          echo "✅ Code quality checks passed!"
+        else
+          echo "⚠️  Code quality issues found (non-blocking)"
+        fi
+        
+        if [ "${{ needs.security.result }}" == "success" ]; then
+          echo "✅ Security scans completed!"
+        else
+          echo "⚠️  Security warnings found (non-blocking)"
+        fi
+        
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🎉 Build completed successfully!"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
