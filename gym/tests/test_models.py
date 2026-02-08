@@ -62,8 +62,9 @@ class TestProgramModel:
             duration="1 month"
         )
         assert program.price is None
-        assert program.image1.name == ''
-        assert program.image2.name == ''
+        # ImageField returns False for boolean check when empty
+        assert not program.image1
+        assert not program.image2
 
     def test_program_many_to_many_features(self, program):
         """Test program can have multiple features"""

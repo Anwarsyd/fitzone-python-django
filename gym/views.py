@@ -1,8 +1,9 @@
-from django.shortcuts import render,redirect
+from django.shortcuts import render, redirect
+from django.contrib import messages
 from .models import Slider, Program, Trainer, Faq, Gallery, Testimonial
-from django.views.generic import ListView,DetailView,TemplateView
+from django.views.generic import ListView, DetailView, TemplateView
 from django.core.mail import send_mail
-# Create your views here.
+
 
 class HomeView(ListView):
     template_name = "gym/index.html"
@@ -16,34 +17,40 @@ class HomeView(ListView):
         context['testimonials'] = Testimonial.objects.all()[:3]
         return context
 
+
 class ProgramListView(ListView):
     template_name = 'gym/programs.html'
     queryset = Program.objects.all()
-    context_object_name="programs_list"
-    
+    context_object_name = "programs_list"
+
 
 class ProgramDetailsView(DetailView):
     template_name = 'gym/program_details.html'
     queryset = Program.objects.all()
     context_object_name = 'program_details'
-    
+
+
 class FaqsView(ListView):
-    template_name="gym/faqs.html"
-    queryset=Faq.objects.all()
-    
+    template_name = "gym/faqs.html"
+    queryset = Faq.objects.all()
+
+
 class TrainersView(ListView):
     template_name = "gym/trainers.html"
     queryset = Trainer.objects.all()
-    
+
+
 class TrainerDetailsView(DetailView):
     template_name = "gym/trainer_details.html"
     queryset = Trainer.objects.all()
-    
+
+
 class GalleryListView(ListView):
     template_name = 'gym/gallery.html'
     queryset = Gallery.objects.all()
     paginate_by = 9
-    
+
+
 class ContactView(TemplateView):
     template_name = "gym/contact.html"
 
@@ -67,4 +74,4 @@ class ContactView(TemplateView):
             except:
                 messages.error(request, "Failed to send message.")
 
-        return redirect('contact')
+        return redirect('gym:contact')
