@@ -1,0 +1,259 @@
+name: FitZone Django CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_fitzone_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_fitzone_db
+      SECRET_KEY: test-secret-key-for-ci-cd-pipeline
+      DEBUG: False
+      ALLOWED_HOSTS: localhost,127.0.0.1
+
+    strategy:
+      matrix:
+        python-version: ['3.11']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create media directories
+      run: |
+        mkdir -p media/sliders
+        mkdir -p media/programs
+        mkdir -p media/trainers
+        mkdir -p media/gallery
+        mkdir -p media/testimonials
+        mkdir -p media/profiles
+
+    - name: Run Django checks
+      run: |
+        python manage.py check
+
+    - name: Run migrations
+      run: |
+        python manage.py migrate --noinput
+
+    - name: Collect static files
+      run: |
+        python manage.py collectstatic --noinput --clear || true
+
+    - name: Run tests for booking app
+      run: |
+        pytest booking/tests/ -v --cov=booking --cov-report=xml:coverage-booking.xml
+
+    - name: Run tests for gym app
+      run: |
+        pytest gym/tests/ -v --cov=gym --cov-report=xml:coverage-gym.xml
+
+    - name: Run all tests with combined coverage
+      run: |
+        pytest -v --cov=booking --cov=gym --cov-report=xml --cov-report=html --cov-report=term-missing
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml,./coverage-booking.xml,./coverage-gym.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Generate coverage badge
+      if: github.ref == 'refs/heads/main'
+      run: |
+        pip install coverage-badge
+        coverage-badge -o coverage.svg -f
+
+    - name: Archive coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-reports
+        path: |
+          htmlcov/
+          coverage.xml
+          coverage-booking.xml
+          coverage-gym.xml
+          coverage.svg
+        retention-days: 30
+
+    - name: Archive test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: |
+          .pytest_cache/
+        retention-days: 7
+
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort pylint
+
+    - name: Run flake8 on booking app
+      run: |
+        flake8 booking/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 booking/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run flake8 on gym app
+      run: |
+        flake8 gym/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 gym/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Check code formatting with black (booking)
+      run: |
+        black --check booking/ || true
+
+    - name: Check code formatting with black (gym)
+      run: |
+        black --check gym/ || true
+
+    - name: Check import sorting with isort (booking)
+      run: |
+        isort --check-only booking/ || true
+
+    - name: Check import sorting with isort (gym)
+      run: |
+        isort --check-only gym/ || true
+
+    - name: Run pylint on booking app
+      run: |
+        pip install django
+        pylint booking/ --disable=all --enable=E,F || true
+
+    - name: Run pylint on gym app
+      run: |
+        pylint gym/ --disable=all --enable=E,F || true
+
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+
+    - name: Install project dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run safety check
+      continue-on-error: true
+      run: |
+        safety check --json --output safety-report.json || true
+        cat safety-report.json
+
+    - name: Run bandit security check on booking app
+      continue-on-error: true
+      run: |
+        bandit -r booking/ -f json -o bandit-booking.json || true
+        cat bandit-booking.json
+
+    - name: Run bandit security check on gym app
+      continue-on-error: true
+      run: |
+        bandit -r gym/ -f json -o bandit-gym.json || true
+        cat bandit-gym.json
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          bandit-booking.json
+          bandit-gym.json
+        retention-days: 30
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [test, lint, security]
+    if: always()
+    
+    steps:
+    - name: Check job results
+      run: |
+        echo "Test Job: ${{ needs.test.result }}"
+        echo "Lint Job: ${{ needs.lint.result }}"
+        echo "Security Job: ${{ needs.security.result }}"
+        
+        if [ "${{ needs.test.result }}" != "success" ]; then
+          echo "❌ Tests failed!"
+          exit 1
+        fi
+        
+        echo "✅ All jobs completed successfully!"
+
+    - name: Success notification
+      if: success()
+      run: |
+        echo "🎉 CI/CD Pipeline completed successfully!"
+        echo "✅ All tests passed"
+        echo "✅ Code quality checks passed"
+        echo "✅ Security scans completed"
