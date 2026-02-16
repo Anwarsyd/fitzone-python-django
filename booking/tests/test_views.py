@@ -250,3 +250,91 @@ class TestLogoutView:
         # Check redirect
         assert response.status_code == 302
         assert response.url == reverse('Booking:send_otp')
+        
+# booking/tests/test_views.py — ADD these new classes
+
+@pytest.mark.django_db
+class TestJWTAuthentication:
+    """Tests specific to JWT auth flow"""
+
+    def test_verify_otp_returns_jwt_tokens(self, api_client):
+        """OTP verification returns both access and refresh tokens"""
+        phone = "5551234567"
+        GymUser.objects.create_user(phone=phone)
+        OTP.objects.create(phone=phone, otp="123456")
+
+        url = reverse('verify-otp')
+        response = api_client.post(url, {
+            "phone": phone, "otp": "123456"
+        }, format='json')
+
+        assert response.status_code == 200
+        assert 'tokens' in response.data
+        assert 'access' in response.data['tokens']
+        assert 'refresh' in response.data['tokens']
+
+    def test_protected_endpoint_with_valid_token(
+        self, authenticated_api_client
+    ):
+        """Valid JWT allows access to protected endpoint"""
+        url = reverse('current-user')
+        response = authenticated_api_client.get(url)
+        assert response.status_code == 200
+
+    def test_protected_endpoint_without_token(self, api_client):
+        """No token returns 401"""
+        url = reverse('current-user')
+        response = api_client.get(url)
+        assert response.status_code == 401
+
+    def test_protected_endpoint_with_fake_token(self, api_client):
+        """Fake token returns 401"""
+        api_client.credentials(
+            HTTP_AUTHORIZATION='Bearer thisisafaketoken'
+        )
+        url = reverse('current-user')
+        response = api_client.get(url)
+        assert response.status_code == 401
+
+    def test_refresh_token_returns_new_access(self, api_client):
+        """Refresh endpoint issues new access token"""
+        phone = "5559876543"
+        GymUser.objects.create_user(phone=phone)
+        OTP.objects.create(phone=phone, otp="654321")
+
+        # Get initial tokens
+        token_response = api_client.post(
+            reverse('verify-otp'),
+            {"phone": phone, "otp": "654321"},
+            format='json'
+        )
+        refresh_token = token_response.data['tokens']['refresh']
+
+        # Refresh
+        response = api_client.post(
+            reverse('token-refresh'),
+            {"refresh": refresh_token},
+            format='json'
+        )
+        assert response.status_code == 200
+        assert 'access' in response.data
+
+
+@pytest.mark.django_db
+class TestAdminUserBehavior:
+    """Tests specific to superuser/admin behavior"""
+
+    def test_superuser_has_usable_password(self, admin_user):
+        """Admin can authenticate with password"""
+        assert admin_user.has_usable_password()
+        assert admin_user.check_password("admin123")
+
+    def test_member_has_unusable_password(self, gym_user):
+        """Member cannot authenticate with password"""
+        assert not gym_user.has_usable_password()
+
+    def test_admin_is_staff(self, admin_user):
+        assert admin_user.is_staff is True
+
+    def test_member_is_not_staff(self, gym_user):
+        assert gym_user.is_staff is False
