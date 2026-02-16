@@ -30,6 +30,8 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Tell Django to use YOUR model as the auth user
+AUTH_USER_MODEL = 'booking.GymUser'
 
 # Application definition
 
@@ -43,6 +45,7 @@ INSTALLED_APPS = [
     
     # Third-party apps
     'rest_framework',
+    'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'drf_spectacular',
