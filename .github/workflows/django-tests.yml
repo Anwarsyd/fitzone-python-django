@@ -53,8 +53,18 @@ jobs:
           python manage.py check
           echo "✅ Django check passed"
 
+      # ══════════════════════════════════════════════════════════
+      # CRITICAL FIX: Delete old database before migrations
+      # ══════════════════════════════════════════════════════════
+      - name: Delete old database (fresh start for AbstractBaseUser)
+        run: |
+          rm -f db.sqlite3
+          echo "✅ Old database deleted - starting fresh"
+
       - name: Run migrations
-        run: python manage.py migrate --noinput
+        run: |
+          python manage.py migrate --noinput
+          echo "✅ Migrations applied successfully"
 
       - name: Verify custom user model (AbstractBaseUser)
         run: |
