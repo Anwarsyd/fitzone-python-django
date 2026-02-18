@@ -14,27 +14,33 @@ from .serializers import (
     BookingSerializer, OTPRequestSerializer, OTPVerifySerializer
 )
 import random
-
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def request_otp(request):
-    """Request an OTP for phone number verification."""
+    """Request OTP for phone verification"""
     serializer = OTPRequestSerializer(data=request.data)
     if serializer.is_valid():
         phone = serializer.validated_data['phone']
-
-        GymUser.objects.get_or_create(phone=phone)
+        
+        # Create or get user
+        user, created = GymUser.objects.get_or_create(phone=phone)
+        
+        # Generate OTP
         otp_code = str(random.randint(100000, 999999))
         OTP.objects.create(phone=phone, otp=otp_code)
-
-        print(f"[DEV] OTP for {phone}: {otp_code}")  # remove in production
-
+        
+        # In production, send via SMS
+        print(f"[DEV] OTP for {phone}: {otp_code}")
+        
         return Response({
             'message': 'OTP sent successfully',
             'phone': phone,
-            'otp': otp_code  # remove in production
-        })
+            'otp': otp_code  # Remove in production
+        }, status=status.HTTP_200_OK)
+    
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
