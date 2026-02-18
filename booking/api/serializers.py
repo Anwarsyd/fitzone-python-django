@@ -60,17 +60,16 @@ class BookingSerializer(serializers.ModelSerializer):
 class OTPRequestSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     
-    def create(self, validated_data):
-        phone = validated_data['phone']
+    def validate_phone(self, value):
+        # Remove non-digits
+        cleaned = ''.join(filter(str.isdigit, value))
         
-        # Create or get user
-        user, created = GymUser.objects.get_or_create(phone=phone)
+        # Check it's reasonable length
+        if len(cleaned) < 10:
+            raise serializers.ValidationError("Phone number too short")
         
-        # Generate OTP
-        otp_code = str(random.randint(100000, 999999))
-        OTP.objects.create(phone=phone, otp=otp_code)
-        
-        return {'phone': phone, 'otp': otp_code}
+        # Store the cleaned version
+        return cleaned
 
 
 class OTPVerifySerializer(serializers.Serializer):
