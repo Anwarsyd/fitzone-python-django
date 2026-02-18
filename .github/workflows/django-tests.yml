@@ -1,5 +1,3 @@
-# .github/workflows/django-test.yml
-
 name: FitZone CI/CD Pipeline
 
 on:
@@ -7,11 +5,8 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
-# ══════════════════════════════════════════════════════════════
-# JOB 1: TESTS (Core Testing + AbstractBaseUser Verification)
-# ══════════════════════════════════════════════════════════════
 jobs:
   test:
     name: Run Tests
@@ -48,9 +43,6 @@ jobs:
         run: |
           mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
 
-      # ══════════════════════════════════════════════════════════
-      # MIGRATION CHECK — catches forgotten makemigrations
-      # ══════════════════════════════════════════════════════════
       - name: Check for missing migrations
         run: |
           python manage.py makemigrations --check --dry-run
@@ -64,10 +56,6 @@ jobs:
       - name: Run migrations
         run: python manage.py migrate --noinput
 
-      # ══════════════════════════════════════════════════════════
-      # ABSTRACTBASEUSER VERIFICATION
-      # Ensures AUTH_USER_MODEL is set correctly
-      # ══════════════════════════════════════════════════════════
       - name: Verify custom user model (AbstractBaseUser)
         run: |
           python manage.py shell -c "
@@ -85,23 +73,17 @@ jobs:
           print('✅ AbstractBaseUser configuration verified')
           "
 
-      # ══════════════════════════════════════════════════════════
-      # GYMUSERMANAGER VERIFICATION
-      # Tests create_user and create_superuser work correctly
-      # ══════════════════════════════════════════════════════════
       - name: Verify GymUserManager
         run: |
           python manage.py shell -c "
           from booking.models import GymUser
           
-          # Test create_user — should set unusable password
           member = GymUser.objects.create_user(phone='9990000001', email='test@ci.com')
           assert not member.has_usable_password(), 'Member must have unusable password (OTP-based)'
           assert member.is_staff is False, 'Member should not be staff'
           assert member.is_active is True, 'Member should be active'
           print('✅ create_user() works correctly')
           
-          # Test create_superuser — should set real password
           admin = GymUser.objects.create_superuser(
               phone='9990000002',
               email='admin@ci.com',
@@ -113,7 +95,6 @@ jobs:
           assert admin.is_superuser is True, 'Superuser must have superuser flag'
           print('✅ create_superuser() works correctly')
           
-          # Cleanup
           GymUser.objects.filter(phone__in=['9990000001', '9990000002']).delete()
           print('✅ GymUserManager fully verified')
           "
@@ -122,10 +103,6 @@ jobs:
         continue-on-error: true
         run: python manage.py collectstatic --noinput --clear
 
-      # ══════════════════════════════════════════════════════════
-      # RUN FULL TEST SUITE
-      # 115+ tests with 90% minimum coverage enforced
-      # ══════════════════════════════════════════════════════════
       - name: Run all tests with coverage
         run: |
           pytest -v \
@@ -168,9 +145,6 @@ jobs:
           path: db.sqlite3
           retention-days: 7
 
-# ══════════════════════════════════════════════════════════════
-# JOB 2: CODE QUALITY (Linting)
-# ══════════════════════════════════════════════════════════════
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
@@ -189,7 +163,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install flake8 black isort
 
-      # Critical errors — pipeline fails if these exist
       - name: flake8 critical errors
         run: |
           flake8 booking/ gym/ \
@@ -199,7 +172,6 @@ jobs:
             --statistics \
             --exclude=migrations
 
-      # All style issues — reported but non-blocking
       - name: flake8 all issues
         continue-on-error: true
         run: |
@@ -223,9 +195,6 @@ jobs:
           isort --check-only booking/ gym/ || \
           echo "⚠️  Run 'isort booking/ gym/' to fix imports"
 
-# ══════════════════════════════════════════════════════════════
-# JOB 3: SECURITY SCANNING
-# ══════════════════════════════════════════════════════════════
   security:
     name: Security Scanning
     runs-on: ubuntu-latest
@@ -259,10 +228,6 @@ jobs:
             --exclude booking/migrations,gym/migrations,booking/tests,gym/tests \
             || echo "⚠️  Bandit scan completed with warnings"
 
-# ══════════════════════════════════════════════════════════════
-# JOB 4: DOCKER BUILD & TEST
-# Full container stack with PostgreSQL
-# ══════════════════════════════════════════════════════════════
   docker:
     name: Docker Build & Test
     runs-on: ubuntu-latest
@@ -270,6 +235,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Create .env for Docker
         run: |
@@ -280,26 +248,26 @@ jobs:
           EOF
 
       - name: Build Docker containers
-        run: docker-compose up -d --build
+        run: docker compose up -d --build
 
       - name: Wait for database to be ready
         run: |
           echo "⏳ Waiting for PostgreSQL to be ready..."
           sleep 10
-          docker-compose exec -T db pg_isready -U fitzone_user
+          docker compose exec -T db pg_isready -U fitzone_user || (docker compose logs db && exit 1)
           echo "✅ PostgreSQL is ready"
+
+      - name: Check container status
+        run: docker compose ps
 
       - name: Run migrations in Docker
         run: |
-          docker-compose exec -T web python manage.py migrate --noinput
+          docker compose exec -T web python manage.py migrate --noinput
           echo "✅ Migrations completed in Docker"
 
-      # ══════════════════════════════════════════════════════════
-      # Verify AbstractBaseUser works in Docker + PostgreSQL
-      # ══════════════════════════════════════════════════════════
       - name: Verify custom user model in Docker
         run: |
-          docker-compose exec -T web python manage.py shell -c "
+          docker compose exec -T web python manage.py shell -c "
           from django.contrib.auth import get_user_model
           from booking.models import GymUser
           
@@ -311,7 +279,7 @@ jobs:
 
       - name: Verify PostgreSQL connection
         run: |
-          docker-compose exec -T web python manage.py shell -c "
+          docker compose exec -T web python manage.py shell -c "
           from django.db import connection
           cursor = connection.cursor()
           cursor.execute('SELECT version();')
@@ -322,28 +290,32 @@ jobs:
 
       - name: Run tests in Docker
         run: |
-          docker-compose exec -T web pytest -v \
+          docker compose exec -T web pytest -v \
             --cov=booking \
             --cov=gym \
             --cov-report=term-missing
 
       - name: Collect static files in Docker
         run: |
-          docker-compose exec -T web \
+          docker compose exec -T web \
             python manage.py collectstatic --noinput
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Web Container Logs ==="
+          docker compose logs web
+          echo "=== DB Container Logs ==="
+          docker compose logs db
 
       - name: Stop and clean up Docker containers
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
-# ══════════════════════════════════════════════════════════════
-# JOB 5: API SMOKE TESTS
-# Full OTP → JWT → protected endpoint flow
-# ══════════════════════════════════════════════════════════════
   api:
     name: API Smoke Tests
     runs-on: ubuntu-latest
-    needs: test  # Only run if tests pass
+    needs: test
 
     env:
       SECRET_KEY: test-secret-key-for-api-checks
@@ -371,9 +343,6 @@ jobs:
       - name: Run migrations
         run: python manage.py migrate --noinput
 
-      # ══════════════════════════════════════════════════════════
-      # Verify all API endpoints are registered
-      # ══════════════════════════════════════════════════════════
       - name: Verify API endpoints exist
         run: |
           python manage.py shell -c "
@@ -381,7 +350,6 @@ jobs:
           
           print('🔍 Checking API endpoints...')
           
-          # Gym endpoints
           endpoints = [
               'program-list',
               'trainer-list',
@@ -395,7 +363,6 @@ jobs:
               url = reverse(name)
               print(f'  ✅ {name:20} → {url}')
           
-          # Auth endpoints
           auth_endpoints = [
               'request-otp',
               'verify-otp',
@@ -407,7 +374,6 @@ jobs:
               url = reverse(name)
               print(f'  ✅ {name:20} → {url}')
           
-          # Documentation
           for name in ['swagger-ui', 'redoc', 'schema']:
               url = reverse(name)
               print(f'  ✅ {name:20} → {url}')
@@ -415,9 +381,6 @@ jobs:
           print('✅ All API endpoints verified')
           "
 
-      # ══════════════════════════════════════════════════════════
-      # Full OTP → JWT authentication flow test
-      # ══════════════════════════════════════════════════════════
       - name: Test complete OTP → JWT flow
         run: |
           python manage.py shell -c "
@@ -429,7 +392,6 @@ jobs:
           
           print('🔐 Testing OTP → JWT authentication flow...')
           
-          # Step 1: Request OTP
           print('  1️⃣  Requesting OTP...')
           response = client.post(
               '/api/booking/auth/request-otp/',
@@ -441,7 +403,6 @@ jobs:
           otp_code = data['otp']
           print(f'     ✅ OTP received: {otp_code}')
           
-          # Step 2: Verify OTP → get JWT tokens
           print('  2️⃣  Verifying OTP...')
           response = client.post(
               '/api/booking/auth/verify-otp/',
@@ -456,7 +417,6 @@ jobs:
           access_token = data['tokens']['access']
           print('     ✅ JWT tokens issued')
           
-          # Step 3: Use JWT token on protected endpoint
           print('  3️⃣  Testing protected endpoint with token...')
           response = client.get(
               '/api/booking/auth/me/',
@@ -467,7 +427,6 @@ jobs:
           assert data['phone'] == phone, f'Wrong phone returned: {data}'
           print('     ✅ Protected endpoint accessible with token')
           
-          # Step 4: No token → should get 401
           print('  4️⃣  Testing protected endpoint without token...')
           response = client.get('/api/booking/auth/me/')
           assert response.status_code == 401, f'Expected 401, got {response.status_code}'
@@ -476,9 +435,6 @@ jobs:
           print('✅ Full OTP → JWT flow passed')
           "
 
-      # ══════════════════════════════════════════════════════════
-      # Test API documentation loads
-      # ══════════════════════════════════════════════════════════
       - name: Verify Swagger documentation loads
         run: |
           python manage.py shell -c "
@@ -501,9 +457,6 @@ jobs:
           print('✅ All documentation endpoints working')
           "
 
-      # ══════════════════════════════════════════════════════════
-      # Test superuser creation (AbstractBaseUser specific)
-      # ══════════════════════════════════════════════════════════
       - name: Verify superuser creation
         run: |
           python manage.py shell -c "
@@ -524,14 +477,9 @@ jobs:
           
           print('✅ Superuser creation and authentication verified')
           
-          # Cleanup
           admin.delete()
           "
 
-# ══════════════════════════════════════════════════════════════
-# JOB 6: BUILD SUMMARY
-# Aggregates all results and determines final status
-# ══════════════════════════════════════════════════════════════
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
@@ -555,28 +503,24 @@ jobs:
 
       - name: Check mandatory jobs
         run: |
-          # Tests are MANDATORY
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "❌ Tests failed — pipeline BLOCKED"
             exit 1
           fi
           echo "✅ Tests passed (115+ tests)"
 
-          # API tests are MANDATORY
           if [ "${{ needs.api.result }}" != "success" ]; then
             echo "❌ API smoke tests failed — pipeline BLOCKED"
             exit 1
           fi
           echo "✅ API smoke tests passed"
 
-          # Docker is MANDATORY
           if [ "${{ needs.docker.result }}" != "success" ]; then
-            echo "⚠️  Docker build failed — please check docker-compose configuration"
+            echo "⚠️  Docker build failed — please check docker compose configuration"
             exit 1
           fi
           echo "✅ Docker build passed"
 
-          # Lint and security are advisory
           if [ "${{ needs.lint.result }}" = "success" ]; then
             echo "✅ Code quality passed"
           else
