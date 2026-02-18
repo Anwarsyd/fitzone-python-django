@@ -1,207 +1,595 @@
-name: Django CI/CD
+# .github/workflows/django-test.yml
+
+name: FitZone CI/CD Pipeline
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual triggering
 
+# ══════════════════════════════════════════════════════════════
+# JOB 1: TESTS (Core Testing + AbstractBaseUser Verification)
+# ══════════════════════════════════════════════════════════════
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
 
     env:
-      SECRET_KEY: test-secret-key-for-github-actions
+      SECRET_KEY: test-secret-key-for-github-actions-ci-only
       DEBUG: False
       ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_SETTINGS_MODULE: fitzone.settings
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-dev
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev libpq-dev
 
-    - name: Upgrade pip
-      run: |
-        python -m pip install --upgrade pip
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
-    - name: Install Python dependencies
-      run: |
-        pip install -r requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
 
-    - name: Create media directories
-      run: |
-        mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
+      - name: Create media directories
+        run: |
+          mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
 
-    - name: Check Django configuration
-      run: |
-        python manage.py check
+      # ══════════════════════════════════════════════════════════
+      # MIGRATION CHECK — catches forgotten makemigrations
+      # ══════════════════════════════════════════════════════════
+      - name: Check for missing migrations
+        run: |
+          python manage.py makemigrations --check --dry-run
+          echo "✅ No missing migrations"
 
-    - name: Run migrations
-      run: |
-        python manage.py migrate --noinput
+      - name: Check Django configuration
+        run: |
+          python manage.py check
+          echo "✅ Django check passed"
 
-    - name: Collect static files
-      continue-on-error: true
-      run: |
-        python manage.py collectstatic --noinput --clear
+      - name: Run migrations
+        run: python manage.py migrate --noinput
 
-    - name: Run all tests with coverage
-      run: |
-        pytest -v --cov=booking --cov=gym --cov-report=xml --cov-report=term-missing --cov-report=html
+      # ══════════════════════════════════════════════════════════
+      # ABSTRACTBASEUSER VERIFICATION
+      # Ensures AUTH_USER_MODEL is set correctly
+      # ══════════════════════════════════════════════════════════
+      - name: Verify custom user model (AbstractBaseUser)
+        run: |
+          python manage.py shell -c "
+          from django.contrib.auth import get_user_model
+          from booking.models import GymUser
+          
+          User = get_user_model()
+          print(f'✅ User model: {User}')
+          
+          assert User.__name__ == 'GymUser', f'Expected GymUser, got {User.__name__}'
+          assert User is GymUser, 'get_user_model() must return GymUser'
+          assert User.USERNAME_FIELD == 'phone', f'USERNAME_FIELD is {User.USERNAME_FIELD}, expected phone'
+          assert User.REQUIRED_FIELDS == [], f'REQUIRED_FIELDS should be empty, got {User.REQUIRED_FIELDS}'
+          
+          print('✅ AbstractBaseUser configuration verified')
+          "
 
-    - name: Display coverage summary
-      run: |
-        echo "📊 Coverage Summary:"
-        coverage report
+      # ══════════════════════════════════════════════════════════
+      # GYMUSERMANAGER VERIFICATION
+      # Tests create_user and create_superuser work correctly
+      # ══════════════════════════════════════════════════════════
+      - name: Verify GymUserManager
+        run: |
+          python manage.py shell -c "
+          from booking.models import GymUser
+          
+          # Test create_user — should set unusable password
+          member = GymUser.objects.create_user(phone='9990000001', email='test@ci.com')
+          assert not member.has_usable_password(), 'Member must have unusable password (OTP-based)'
+          assert member.is_staff is False, 'Member should not be staff'
+          assert member.is_active is True, 'Member should be active'
+          print('✅ create_user() works correctly')
+          
+          # Test create_superuser — should set real password
+          admin = GymUser.objects.create_superuser(
+              phone='9990000002',
+              email='admin@ci.com',
+              password='testpass123'
+          )
+          assert admin.has_usable_password(), 'Superuser must have usable password'
+          assert admin.check_password('testpass123'), 'Superuser password must match'
+          assert admin.is_staff is True, 'Superuser must be staff'
+          assert admin.is_superuser is True, 'Superuser must have superuser flag'
+          print('✅ create_superuser() works correctly')
+          
+          # Cleanup
+          GymUser.objects.filter(phone__in=['9990000001', '9990000002']).delete()
+          print('✅ GymUserManager fully verified')
+          "
 
-    - name: Upload coverage to Codecov
-      if: github.event_name == 'push'
-      uses: codecov/codecov-action@v4
-      continue-on-error: true
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Collect static files
+        continue-on-error: true
+        run: python manage.py collectstatic --noinput --clear
 
-    - name: Archive coverage reports
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-reports
-        path: |
-          htmlcov/
-          coverage.xml
-        retention-days: 30
+      # ══════════════════════════════════════════════════════════
+      # RUN FULL TEST SUITE
+      # 115+ tests with 90% minimum coverage enforced
+      # ══════════════════════════════════════════════════════════
+      - name: Run all tests with coverage
+        run: |
+          pytest -v \
+            --cov=booking \
+            --cov=gym \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=90
 
-    - name: Archive test database
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-database
-        path: db.sqlite3
-        retention-days: 7
+      - name: Display coverage summary
+        run: coverage report
 
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: fitzone-coverage
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Archive coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            htmlcov/
+            coverage.xml
+          retention-days: 30
+
+      - name: Archive test database on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-database-sqlite
+          path: db.sqlite3
+          retention-days: 7
+
+# ══════════════════════════════════════════════════════════════
+# JOB 2: CODE QUALITY (Linting)
+# ══════════════════════════════════════════════════════════════
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install linting tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 black isort
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort
 
-    - name: Run flake8 - Critical Errors
-      run: |
-        flake8 booking/ gym/ --count --select=E9,F63,F7,F82 --show-source --statistics
+      # Critical errors — pipeline fails if these exist
+      - name: flake8 critical errors
+        run: |
+          flake8 booking/ gym/ \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics \
+            --exclude=migrations
 
-    - name: Run flake8 - All Issues
-      continue-on-error: true
-      run: |
-        flake8 booking/ gym/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      # All style issues — reported but non-blocking
+      - name: flake8 all issues
+        continue-on-error: true
+        run: |
+          flake8 booking/ gym/ \
+            --count \
+            --exit-zero \
+            --max-complexity=10 \
+            --max-line-length=127 \
+            --statistics \
+            --exclude=migrations
 
-    - name: Check code formatting with black
-      continue-on-error: true
-      run: |
-        black --check booking/ gym/ || echo "⚠️  Black formatting issues found (run 'black booking/ gym/' to fix)"
+      - name: black formatting check
+        continue-on-error: true
+        run: |
+          black --check booking/ gym/ || \
+          echo "⚠️  Run 'black booking/ gym/' to fix formatting"
 
-    - name: Check import sorting with isort
-      continue-on-error: true
-      run: |
-        isort --check-only booking/ gym/ || echo "⚠️  Import sorting issues found (run 'isort booking/ gym/' to fix)"
+      - name: isort import check
+        continue-on-error: true
+        run: |
+          isort --check-only booking/ gym/ || \
+          echo "⚠️  Run 'isort booking/ gym/' to fix imports"
 
+# ══════════════════════════════════════════════════════════════
+# JOB 3: SECURITY SCANNING
+# ══════════════════════════════════════════════════════════════
   security:
     name: Security Scanning
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety bandit
+          pip install -r requirements.txt
 
-    - name: Install project dependencies
-      run: |
-        pip install -r requirements.txt
+      - name: safety dependency scan
+        continue-on-error: true
+        run: |
+          safety check --json || \
+          echo "⚠️  Safety check completed with warnings"
 
-    - name: Run safety check
-      continue-on-error: true
-      run: |
-        safety check --json || echo "⚠️  Safety check completed with warnings"
+      - name: bandit code scan
+        continue-on-error: true
+        run: |
+          bandit -r booking/ gym/ \
+            -ll \
+            --exclude booking/migrations,gym/migrations,booking/tests,gym/tests \
+            || echo "⚠️  Bandit scan completed with warnings"
 
-    - name: Run bandit security scan
-      continue-on-error: true
-      run: |
-        bandit -r booking/ gym/ -ll || echo "⚠️  Bandit scan completed with warnings"
+# ══════════════════════════════════════════════════════════════
+# JOB 4: DOCKER BUILD & TEST
+# Full container stack with PostgreSQL
+# ══════════════════════════════════════════════════════════════
+  docker:
+    name: Docker Build & Test
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env for Docker
+        run: |
+          cat > .env << EOF
+          SECRET_KEY=docker-ci-test-secret-key-only
+          DEBUG=True
+          ALLOWED_HOSTS=localhost,127.0.0.1
+          EOF
+
+      - name: Build Docker containers
+        run: docker-compose up -d --build
+
+      - name: Wait for database to be ready
+        run: |
+          echo "⏳ Waiting for PostgreSQL to be ready..."
+          sleep 10
+          docker-compose exec -T db pg_isready -U fitzone_user
+          echo "✅ PostgreSQL is ready"
+
+      - name: Run migrations in Docker
+        run: |
+          docker-compose exec -T web python manage.py migrate --noinput
+          echo "✅ Migrations completed in Docker"
+
+      # ══════════════════════════════════════════════════════════
+      # Verify AbstractBaseUser works in Docker + PostgreSQL
+      # ══════════════════════════════════════════════════════════
+      - name: Verify custom user model in Docker
+        run: |
+          docker-compose exec -T web python manage.py shell -c "
+          from django.contrib.auth import get_user_model
+          from booking.models import GymUser
+          
+          User = get_user_model()
+          assert User.__name__ == 'GymUser', f'Expected GymUser in Docker, got {User.__name__}'
+          assert User.USERNAME_FIELD == 'phone'
+          print('✅ GymUser model verified in Docker + PostgreSQL')
+          "
+
+      - name: Verify PostgreSQL connection
+        run: |
+          docker-compose exec -T web python manage.py shell -c "
+          from django.db import connection
+          cursor = connection.cursor()
+          cursor.execute('SELECT version();')
+          version = cursor.fetchone()[0]
+          print(f'✅ PostgreSQL: {version[:50]}')
+          assert 'PostgreSQL' in version
+          "
+
+      - name: Run tests in Docker
+        run: |
+          docker-compose exec -T web pytest -v \
+            --cov=booking \
+            --cov=gym \
+            --cov-report=term-missing
+
+      - name: Collect static files in Docker
+        run: |
+          docker-compose exec -T web \
+            python manage.py collectstatic --noinput
+
+      - name: Stop and clean up Docker containers
+        if: always()
+        run: docker-compose down -v
+
+# ══════════════════════════════════════════════════════════════
+# JOB 5: API SMOKE TESTS
+# Full OTP → JWT → protected endpoint flow
+# ══════════════════════════════════════════════════════════════
+  api:
+    name: API Smoke Tests
+    runs-on: ubuntu-latest
+    needs: test  # Only run if tests pass
+
+    env:
+      SECRET_KEY: test-secret-key-for-api-checks
+      DEBUG: True
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_SETTINGS_MODULE: fitzone.settings
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create media directories
+        run: |
+          mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
+
+      - name: Run migrations
+        run: python manage.py migrate --noinput
+
+      # ══════════════════════════════════════════════════════════
+      # Verify all API endpoints are registered
+      # ══════════════════════════════════════════════════════════
+      - name: Verify API endpoints exist
+        run: |
+          python manage.py shell -c "
+          from django.urls import reverse
+          
+          print('🔍 Checking API endpoints...')
+          
+          # Gym endpoints
+          endpoints = [
+              'program-list',
+              'trainer-list',
+              'slider-list',
+              'faq-list',
+              'gallery-list',
+              'testimonial-list',
+          ]
+          
+          for name in endpoints:
+              url = reverse(name)
+              print(f'  ✅ {name:20} → {url}')
+          
+          # Auth endpoints
+          auth_endpoints = [
+              'request-otp',
+              'verify-otp',
+              'token-refresh',
+              'current-user',
+          ]
+          
+          for name in auth_endpoints:
+              url = reverse(name)
+              print(f'  ✅ {name:20} → {url}')
+          
+          # Documentation
+          for name in ['swagger-ui', 'redoc', 'schema']:
+              url = reverse(name)
+              print(f'  ✅ {name:20} → {url}')
+          
+          print('✅ All API endpoints verified')
+          "
+
+      # ══════════════════════════════════════════════════════════
+      # Full OTP → JWT authentication flow test
+      # ══════════════════════════════════════════════════════════
+      - name: Test complete OTP → JWT flow
+        run: |
+          python manage.py shell -c "
+          import json
+          from django.test import Client
+          
+          client = Client()
+          phone = '9876543210'
+          
+          print('🔐 Testing OTP → JWT authentication flow...')
+          
+          # Step 1: Request OTP
+          print('  1️⃣  Requesting OTP...')
+          response = client.post(
+              '/api/booking/auth/request-otp/',
+              json.dumps({'phone': phone}),
+              content_type='application/json'
+          )
+          assert response.status_code == 200, f'OTP request failed: {response.status_code}'
+          data = json.loads(response.content)
+          otp_code = data['otp']
+          print(f'     ✅ OTP received: {otp_code}')
+          
+          # Step 2: Verify OTP → get JWT tokens
+          print('  2️⃣  Verifying OTP...')
+          response = client.post(
+              '/api/booking/auth/verify-otp/',
+              json.dumps({'phone': phone, 'otp': otp_code}),
+              content_type='application/json'
+          )
+          assert response.status_code == 200, f'OTP verify failed: {response.status_code}'
+          data = json.loads(response.content)
+          assert 'tokens' in data, 'Response missing tokens'
+          assert 'access' in data['tokens'], 'Missing access token'
+          assert 'refresh' in data['tokens'], 'Missing refresh token'
+          access_token = data['tokens']['access']
+          print('     ✅ JWT tokens issued')
+          
+          # Step 3: Use JWT token on protected endpoint
+          print('  3️⃣  Testing protected endpoint with token...')
+          response = client.get(
+              '/api/booking/auth/me/',
+              HTTP_AUTHORIZATION=f'Bearer {access_token}'
+          )
+          assert response.status_code == 200, f'Auth check failed: {response.status_code}'
+          data = json.loads(response.content)
+          assert data['phone'] == phone, f'Wrong phone returned: {data}'
+          print('     ✅ Protected endpoint accessible with token')
+          
+          # Step 4: No token → should get 401
+          print('  4️⃣  Testing protected endpoint without token...')
+          response = client.get('/api/booking/auth/me/')
+          assert response.status_code == 401, f'Expected 401, got {response.status_code}'
+          print('     ✅ Unauthenticated request correctly rejected')
+          
+          print('✅ Full OTP → JWT flow passed')
+          "
+
+      # ══════════════════════════════════════════════════════════
+      # Test API documentation loads
+      # ══════════════════════════════════════════════════════════
+      - name: Verify Swagger documentation loads
+        run: |
+          python manage.py shell -c "
+          from django.test import Client
+          
+          client = Client()
+          print('📚 Checking API documentation...')
+          
+          docs = [
+              ('/api/schema/',  'OpenAPI Schema'),
+              ('/api/docs/',    'Swagger UI'),
+              ('/api/redoc/',   'ReDoc'),
+          ]
+          
+          for url, name in docs:
+              response = client.get(url)
+              assert response.status_code == 200, f'{name} at {url} returned {response.status_code}'
+              print(f'  ✅ {name:20} → {url}')
+          
+          print('✅ All documentation endpoints working')
+          "
+
+      # ══════════════════════════════════════════════════════════
+      # Test superuser creation (AbstractBaseUser specific)
+      # ══════════════════════════════════════════════════════════
+      - name: Verify superuser creation
+        run: |
+          python manage.py shell -c "
+          from booking.models import GymUser
+          
+          print('👤 Testing superuser creation...')
+          
+          admin = GymUser.objects.create_superuser(
+              phone='1010101010',
+              email='admin@citest.com',
+              password='adminpass123'
+          )
+          
+          assert admin.is_staff is True, 'Superuser must be staff'
+          assert admin.is_superuser is True, 'Superuser must have superuser flag'
+          assert admin.has_usable_password(), 'Superuser must have usable password'
+          assert admin.check_password('adminpass123'), 'Superuser password must work'
+          
+          print('✅ Superuser creation and authentication verified')
+          
+          # Cleanup
+          admin.delete()
+          "
+
+# ══════════════════════════════════════════════════════════════
+# JOB 6: BUILD SUMMARY
+# Aggregates all results and determines final status
+# ══════════════════════════════════════════════════════════════
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [test, lint, security]
+    needs: [test, lint, security, docker, api]
     if: always()
-    
+
     steps:
-    - name: Check build results
-      run: |
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "🔍 FitZone CI/CD Build Summary"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "Test Results:     ${{ needs.test.result }}"
-        echo "Code Quality:     ${{ needs.lint.result }}"
-        echo "Security Scan:    ${{ needs.security.result }}"
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        
-        if [ "${{ needs.test.result }}" == "success" ]; then
-          echo "✅ All tests passed!"
-        else
-          echo "❌ Tests failed - check logs above"
-          exit 1
-        fi
-        
-        if [ "${{ needs.lint.result }}" == "success" ]; then
-          echo "✅ Code quality checks passed!"
-        else
-          echo "⚠️  Code quality issues found (non-blocking)"
-        fi
-        
-        if [ "${{ needs.security.result }}" == "success" ]; then
-          echo "✅ Security scans completed!"
-        else
-          echo "⚠️  Security warnings found (non-blocking)"
-        fi
-        
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "🎉 Build completed successfully!"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: Display build results
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🏋️  FitZone CI/CD Build Summary"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Tests:           ${{ needs.test.result }}"
+          echo "Code Quality:    ${{ needs.lint.result }}"
+          echo "Security:        ${{ needs.security.result }}"
+          echo "Docker:          ${{ needs.docker.result }}"
+          echo "API Smoke Tests: ${{ needs.api.result }}"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Check mandatory jobs
+        run: |
+          # Tests are MANDATORY
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "❌ Tests failed — pipeline BLOCKED"
+            exit 1
+          fi
+          echo "✅ Tests passed (115+ tests)"
+
+          # API tests are MANDATORY
+          if [ "${{ needs.api.result }}" != "success" ]; then
+            echo "❌ API smoke tests failed — pipeline BLOCKED"
+            exit 1
+          fi
+          echo "✅ API smoke tests passed"
+
+          # Docker is MANDATORY
+          if [ "${{ needs.docker.result }}" != "success" ]; then
+            echo "⚠️  Docker build failed — please check docker-compose configuration"
+            exit 1
+          fi
+          echo "✅ Docker build passed"
+
+          # Lint and security are advisory
+          if [ "${{ needs.lint.result }}" = "success" ]; then
+            echo "✅ Code quality passed"
+          else
+            echo "⚠️  Code quality issues (non-blocking)"
+          fi
+
+          if [ "${{ needs.security.result }}" = "success" ]; then
+            echo "✅ Security scan passed"
+          else
+            echo "⚠️  Security warnings detected (non-blocking)"
+          fi
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 Build completed successfully!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
