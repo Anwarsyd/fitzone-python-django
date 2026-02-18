@@ -60,16 +60,16 @@ class BookingSerializer(serializers.ModelSerializer):
 class OTPRequestSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     
-    def validate_phone(self, value):
-        # Remove non-digits
-        cleaned = ''.join(filter(str.isdigit, value))
+    # def validate_phone(self, value):
+    #     # Remove non-digits
+    #     cleaned = ''.join(filter(str.isdigit, value))
         
-        # Check it's reasonable length
-        if len(cleaned) < 10:
-            raise serializers.ValidationError("Phone number too short")
+    #     # Check it's reasonable length
+    #     if len(cleaned) < 10:
+    #         raise serializers.ValidationError("Phone number too short")
         
-        # Store the cleaned version
-        return cleaned
+    #     # Store the cleaned version
+    #     return cleaned
 
 
 class OTPVerifySerializer(serializers.Serializer):
