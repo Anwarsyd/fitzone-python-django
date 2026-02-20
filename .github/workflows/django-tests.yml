@@ -329,8 +329,8 @@ jobs:
 
     env:
       SECRET_KEY: test-secret-key-for-api-checks
-      DEBUG: True                                    # ← Make sure this is True
-      ALLOWED_HOSTS: localhost,127.0.0.1,testserver  # ← Add testserver
+      DEBUG: True
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
       DJANGO_SETTINGS_MODULE: fitzone.settings
 
     steps:
@@ -350,8 +350,18 @@ jobs:
         run: |
           mkdir -p media/{sliders,programs,trainers,gallery,testimonials,profiles}
 
+      # ══════════════════════════════════════════════════════════
+      # CRITICAL: Delete database before migrations (same as test job)
+      # ══════════════════════════════════════════════════════════
+      - name: Delete old database (fresh start for AbstractBaseUser)
+        run: |
+          rm -f db.sqlite3
+          echo "✅ Old database deleted - starting fresh"
+
       - name: Run migrations
-        run: python manage.py migrate --noinput
+        run: |
+          python manage.py migrate --noinput
+          echo "✅ Migrations applied"
 
       - name: Verify API endpoints exist
         run: |
